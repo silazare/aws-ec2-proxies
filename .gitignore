@@ -1,20 +1,22 @@
-# Compiled files
-*.tfstate*
-
-# Variables files with secrets
-*.tfvars
-
-# Plan files
-*.plan
-
 # Certificate files
 *.pem
 *.pfx
 *.crt
 *.key
 
-# Terraform folder
-.terraform/
+# Terraform
+terraform.json
+terraform.tfvars
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.tfstate.lock.info
+.terraform
+.terraform-debug
+tmp
+backend.config
+.aws_secrets
+vendor
+.DS_Store
 
 # SSH folder
 /.ssh/*

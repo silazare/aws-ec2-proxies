@@ -1,75 +1,61 @@
-provider "aws" {
-  version = "~> 2.7"
-  access_key = "${var.AWS_ACCESS_KEY_ID}"
-  secret_key = "${var.AWS_SECRET_ACCESS_KEY}"
-  region = "${var.AWS_DEFAULT_REGION}"
+resource "aws_instance" "proxy_node" {
+  count         = var.instance_count
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.instance_type
+  key_name      = var.ssh_key
+
+  vpc_security_group_ids = [aws_security_group.proxy_sg.id]
+
+  tags = {
+    Name = "goproxy-node-${count.index + 1}"
+  }
+
+  provisioner "file" {
+    source      = "setup.sh"
+    destination = "/home/${var.instance_user}/setup.sh"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x ./setup.sh",
+      "sudo ./setup.sh ${var.instance_user} ${var.proxy_type} ${var.proxy_port} ${var.proxy_user} ${var.proxy_password}",
+    ]
+  }
+
+  connection {
+    type        = "ssh"
+    host        = self.public_ip
+    user        = var.instance_user
+    private_key = file("${var.private_key_path}")
+  }
 }
 
-resource "aws_security_group" "ec2_proxies_sg" {
-  name = "ec2_proxies_sg"
+resource "aws_key_pair" "proxy_key" {
+  key_name   = var.ssh_key
+  public_key = file("${var.public_key_path}")
+}
 
-  # Open up incoming ssh port
+resource "aws_security_group" "proxy_sg" {
+  name = "goproxy-security-group"
+
   ingress {
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["${chomp(data.http.ipinfo.body)}/32"]
+  }
+
+  ingress {
+    from_port   = var.proxy_port
+    to_port     = var.proxy_port
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Open up outbound internet access
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  # Open up incoming traffic for proxy
-  ingress {
-    from_port   = "${var.PROXY_PORT}"
-    to_port     = "${var.PROXY_PORT}"
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-# https://www.terraform.io/docs/providers/aws/r/key_pair.html
-resource "aws_key_pair" "ec2_key" {
-  key_name = "${var.KEY_PAIR_NAME}"
-  public_key = "${file("${var.PUBLIC_KEY_PATH}")}"
-}
-
-resource "aws_instance" "ProxyNode" {
-  count         = "${var.AWS_INSTANCES_COUNT}"
-  ami           = "${var.AWS_INSTANCE_AMI}"
-  instance_type = "${var.AWS_INSTANCE_TYPE}"
-  key_name      = "${aws_key_pair.ec2_key.key_name}"
-
-  vpc_security_group_ids = ["${aws_security_group.ec2_proxies_sg.id}"]
-  tags = {
-    Name = "Proxy Node ${count.index}"
-  }
-
-  provisioner "file" {
-    source      = "setup.sh"
-    destination = "/home/${var.AWS_INSTANCE_USER_NAME}/setup.sh"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "chmod +x ./setup.sh",
-      "sudo ./setup.sh ${var.AWS_INSTANCE_USER_NAME} ${var.PROXY_TYPE} ${var.PROXY_PORT} ${var.PROXY_USER} ${var.PROXY_PASSWORD}",
-    ]
-  }
-
-  connection {
-    type = "ssh"
-    host = self.public_ip
-    user = "${var.AWS_INSTANCE_USER_NAME}"
-    private_key = "${file("${var.PRIVATE_KEY_PATH}")}"
-  }
-}
-
-output "instances" {
-  value = "${aws_instance.ProxyNode.*.public_ip}"
 }
